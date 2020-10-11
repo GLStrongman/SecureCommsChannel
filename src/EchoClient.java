@@ -1,8 +1,13 @@
 import javax.crypto.Cipher;
+import javax.crypto.NoSuchPaddingException;
 import java.io.*;
 import java.net.*;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
+import java.nio.charset.StandardCharsets;
+import java.security.*;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.Base64;
+import java.util.Scanner;
 
 public class EchoClient {
 
@@ -27,20 +32,40 @@ public class EchoClient {
 		}
 	}
 
-	public void generateKey() {
+	public KeyPair generateKey() {
 		try {
-			String encCipherName = "RSA/ECB/PKCS1Padding";
-			String signCipherName = "SHA256withRSA";
 			// Create and initialize keypair
 			KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
 			keyGen.initialize(2048);
-			KeyPair serverKey = keyGen.generateKeyPair();
-			System.out.println("Sever public key: " + serverKey.getPublic().toString());
-			Cipher cipher = Cipher.getInstance(encCipherName);
-			cipher.init(Cipher.ENCRYPT_MODE, serverKey.getPublic());
+			KeyPair clientKey = keyGen.generateKeyPair();
+			Base64.Encoder encoder = Base64.getEncoder();
+			System.out.println("Client public key: " + encoder.encode(clientKey.getPublic().getEncoded()));
+			return clientKey;
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+			return null;
 		}
-		catch(Exception e) {
+	}
 
+	public PublicKey getServerKey(){
+		// Create and initialize keypair
+		try {
+			System.out.println("Please enter the server's public key: ");
+			Scanner sc = new Scanner(System.in);
+			String serverKey = sc.next();
+
+			Base64.Decoder decoder = Base64.getDecoder();
+			byte[] serverPubKeyByte = decoder.decode(serverKey);
+
+			X509EncodedKeySpec serverPubKeySpec = new X509EncodedKeySpec(serverPubKeyByte);
+			KeyFactory keyFac = KeyFactory.getInstance("RSA");
+			return keyFac.generatePublic(serverPubKeySpec);
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+			return null;
+		} catch (InvalidKeySpecException e) {
+			e.printStackTrace();
+			return null;
 		}
 	}
 
@@ -49,19 +74,34 @@ public class EchoClient {
 	 *
 	 * @param msg the message to send
 	 */
-	public String sendMessage(String msg) {
+	public String sendMessage(String msg, PublicKey serverPubKey, KeyPair clientKey) {
 		try {
-			System.out.println("Client sending cleartext "+msg);
+			String encCipherName = "RSA/ECB/PKCS1Padding";
+			String signCipherName = "SHA256withRSA";
+			Cipher cipher = Cipher.getInstance(encCipherName);
+			cipher.init(Cipher.ENCRYPT_MODE, clientKey.getPublic());
+
+			System.out.println("Client sending cleartext " + msg);
 			byte[] data = msg.getBytes("UTF-8");
+
 			// encrypt data
-			System.out.println("Client sending ciphertext "+Util.bytesToHex(data));
-			out.write(data);
+			cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
+			final byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
+			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
+			System.out.println("Client sending ciphertext " + cipherTextBytes);
+
+			out.write(cipherTextBytes);
 			out.flush();
 			in.read(data);
+
+			cipher.init(Cipher.DECRYPT_MODE, clientKey.getPrivate());
+
 			// decrypt data
-			String reply = new String(data, "UTF-8");
-			System.out.println("Server returned cleartext "+reply);
-			return reply;
+			byte[] decryptedBytes = cipher.doFinal(data);
+			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+			System.out.println("Server returned cleartext " + decryptedString);
+			return decryptedString;
+
 		} catch (Exception e) {
 			System.out.println(e.getMessage());
 			return null;
@@ -84,12 +124,13 @@ public class EchoClient {
 
 	public static void main(String[] args) {
 		EchoClient client = new EchoClient();
-		client.generateKey();
 		client.startConnection("127.0.0.1", 4444);
-		client.sendMessage("12345678");
-		client.sendMessage("ABCDEFGH");
-		client.sendMessage("87654321");
-		client.sendMessage("HGFEDCBA");
+		KeyPair clientKey = client.generateKey();
+		PublicKey serverPubKey = client.getServerKey();
+		client.sendMessage("12345678", serverPubKey, clientKey);
+		client.sendMessage("ABCDEFGH", serverPubKey, clientKey);
+		client.sendMessage("87654321", serverPubKey, clientKey);
+		client.sendMessage("HGFEDCBA", serverPubKey, clientKey);
 		client.stopConnection();
 	}
 }
