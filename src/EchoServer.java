@@ -1,5 +1,11 @@
+import javax.crypto.Cipher;
+import javax.crypto.NoSuchPaddingException;
 import java.net.*;
 import java.io.*;
+import java.security.InvalidKeyException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 
 public class EchoServer {
 
@@ -16,11 +22,21 @@ public class EchoServer {
 	 */
 	public void start(int port) {
 		try {
+			String encCipherName = "RSA/ECB/PKCS1Padding";
+			String signCipherName = "SHA256withRSA";
 			serverSocket = new ServerSocket(port);
 			clientSocket = serverSocket.accept();
 			out = new DataOutputStream(clientSocket.getOutputStream());
 			in = new DataInputStream(clientSocket.getInputStream());
 			byte[] data = new byte[8];
+			// Create and initialize keypair
+			KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+			keyGen.initialize(2048);
+			KeyPair serverKey = keyGen.generateKeyPair();
+			System.out.println("Sever public key: " + serverKey.getPublic().toString());
+			Cipher cipher = Cipher.getInstance(encCipherName);
+			cipher.init(Cipher.ENCRYPT_MODE, serverKey.getPublic());
+
 			int numBytes;
 			while ((numBytes = in.read(data)) != -1) {
 				// decrypt data
@@ -34,6 +50,12 @@ public class EchoServer {
 			stop();
 		} catch (IOException e) {
 			System.out.println(e.getMessage());
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchPaddingException e) {
+			e.printStackTrace();
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
 		}
 
 	}

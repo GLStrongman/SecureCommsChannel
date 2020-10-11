@@ -1,5 +1,8 @@
+import javax.crypto.Cipher;
 import java.io.*;
 import java.net.*;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 
 public class EchoClient {
 
@@ -21,6 +24,23 @@ public class EchoClient {
 			in = new DataInputStream(clientSocket.getInputStream());
 		} catch (IOException e) {
 			System.out.println("Error when initializing connection");
+		}
+	}
+
+	public void generateKey() {
+		try {
+			String encCipherName = "RSA/ECB/PKCS1Padding";
+			String signCipherName = "SHA256withRSA";
+			// Create and initialize keypair
+			KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+			keyGen.initialize(2048);
+			KeyPair serverKey = keyGen.generateKeyPair();
+			System.out.println("Sever public key: " + serverKey.getPublic().toString());
+			Cipher cipher = Cipher.getInstance(encCipherName);
+			cipher.init(Cipher.ENCRYPT_MODE, serverKey.getPublic());
+		}
+		catch(Exception e) {
+
 		}
 	}
 
@@ -64,6 +84,7 @@ public class EchoClient {
 
 	public static void main(String[] args) {
 		EchoClient client = new EchoClient();
+		client.generateKey();
 		client.startConnection("127.0.0.1", 4444);
 		client.sendMessage("12345678");
 		client.sendMessage("ABCDEFGH");
