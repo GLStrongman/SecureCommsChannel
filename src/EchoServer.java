@@ -52,6 +52,8 @@ public class EchoServer {
 			String encCipherName = "RSA/ECB/PKCS1Padding";
 			String signCipherName = "SHA256withRSA";
 
+			System.out.println("Waiting for client...");
+
 			serverSocket = new ServerSocket(port);
 			clientSocket = serverSocket.accept();
 			out = new DataOutputStream(clientSocket.getOutputStream());
@@ -65,7 +67,7 @@ public class EchoServer {
 			keyGen.initialize(2048);
 			KeyPair serverKey = keyGen.generateKeyPair();
 			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Sever public key: " + encoder.encode(serverKey.getPublic().getEncoded()));
+			System.out.println("Sever public key: " + new String(encoder.encode(serverKey.getPublic().getEncoded())));
 
 			int numBytes;
 			while ((numBytes = in.read(data)) != -1) {
@@ -77,12 +79,13 @@ public class EchoServer {
 				String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
 				System.out.println("Server received cleartext " + decryptedString);
 
+				// encrypt data
 				cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
 				final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
 				byte[] cipherTextBytes = cipher.doFinal(originalBytes);
 
 				// encrypt response (this is just the decrypted data re-encrypted)
-				System.out.println("Server sending ciphertext " + cipherTextBytes);
+				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes))); //TODO - wrong?
 				out.write(cipherTextBytes);
 				out.flush();
 			}

@@ -39,7 +39,7 @@ public class EchoClient {
 			keyGen.initialize(2048);
 			KeyPair clientKey = keyGen.generateKeyPair();
 			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Client public key: " + encoder.encode(clientKey.getPublic().getEncoded()));
+			System.out.println("Client public key: " + new String(encoder.encode(clientKey.getPublic().getEncoded())));
 			return clientKey;
 		} catch (NoSuchAlgorithmException e) {
 			e.printStackTrace();
@@ -79,16 +79,17 @@ public class EchoClient {
 			String encCipherName = "RSA/ECB/PKCS1Padding";
 			String signCipherName = "SHA256withRSA";
 			Cipher cipher = Cipher.getInstance(encCipherName);
-			cipher.init(Cipher.ENCRYPT_MODE, clientKey.getPublic());
+			//cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
+			Base64.Encoder encoder = Base64.getEncoder();
 
 			System.out.println("Client sending cleartext " + msg);
 			byte[] data = msg.getBytes("UTF-8");
 
 			// encrypt data
 			cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
-			final byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
+			final byte[] encryptedBytes = data;
 			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
-			System.out.println("Client sending ciphertext " + cipherTextBytes);
+			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes))); //TODO - wrong?
 
 			out.write(cipherTextBytes);
 			out.flush();
