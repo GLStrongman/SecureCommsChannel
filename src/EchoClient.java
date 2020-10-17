@@ -93,18 +93,20 @@ public class EchoClient {
 
 			out.write(cipherTextBytes);
 			out.flush();
-			in.read(data);
+			byte[] inMessage = new byte[256];
+			in.read(inMessage);
 
 			cipher.init(Cipher.DECRYPT_MODE, clientKey.getPrivate());
 
 			// decrypt data
-			byte[] decryptedBytes = cipher.doFinal(data);
+			byte[] decryptedBytes = cipher.doFinal(inMessage);
 			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
 			System.out.println("Server returned cleartext " + decryptedString);
 			return decryptedString;
 
 		} catch (Exception e) {
-			System.out.println(e.getMessage());
+			e.printStackTrace();
+			System.out.println("FUCK " + e.getMessage());
 			return null;
 		}
 	}
@@ -119,7 +121,7 @@ public class EchoClient {
 			out.close();
 			clientSocket.close();
 		} catch (IOException e) {
-			System.out.println("error when closing");
+			System.out.println("Error when closing");
 		}
 	}
 
