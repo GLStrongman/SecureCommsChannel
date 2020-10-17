@@ -35,10 +35,10 @@ public class EchoServer {
 			KeyFactory keyFac = KeyFactory.getInstance("RSA");
 			return keyFac.generatePublic(clientPubKeySpec);
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			System.out.println("Error: the given algorithm is invalid. ");
 			return null;
 		} catch (InvalidKeySpecException e) {
-			e.printStackTrace();
+			System.out.println("Error: this key spec is invalid.");
 			return null;
 		}
 	}
@@ -105,9 +105,9 @@ public class EchoServer {
 				sig.update(originalBytes);
 				byte[] signatureBytes = sig.sign();
 
-				// encrypt response (this is just the decrypted data re-encrypted)
+				// Encrypt response (this is just the decrypted data re-encrypted)
 				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-				System.out.println("Server sending signature " + new String(encoder.encode(signatureBytes)));
+				//System.out.println("Server sending signature " + new String(encoder.encode(signatureBytes)));
 
 				out.write(cipherTextBytes);
 				out.write(signatureBytes);
@@ -115,19 +115,18 @@ public class EchoServer {
 			}
 			stop();
 		} catch (IOException e) {
-			System.out.println(e.getMessage());
+			//e.printStackTrace();
+			System.out.println("Error: problem with file reading/writing. ");
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
-		} catch (NoSuchPaddingException e) {
-			e.printStackTrace();
+			System.out.println("Error: the given algorithm is invalid. ");
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
-		} catch (BadPaddingException e) {
-			e.printStackTrace();
-		} catch (IllegalBlockSizeException e) {
-			e.printStackTrace();
+			System.out.println("Error: the given key is invalid. ");
 		} catch (SignatureException e) {
-			e.printStackTrace();
+			System.out.println("Error: problem with signature. ");
+		} catch (NoSuchPaddingException | BadPaddingException e) {
+			System.out.println("Error: problem with the encryption algorithm padding. ");
+		} catch (IllegalBlockSizeException e) {
+			System.out.println("Error: block size is invalid. ");
 		}
 
 	}
@@ -143,7 +142,8 @@ public class EchoServer {
 			clientSocket.close();
 			serverSocket.close();
 		} catch (IOException e) {
-			System.out.println(e.getMessage());
+			//System.out.println(e.getMessage());
+			System.out.println("Error while closing server.");
 		}
 
 	}

@@ -1,4 +1,6 @@
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.io.*;
 import java.net.*;
@@ -45,20 +47,11 @@ public class EchoClient {
 			System.out.println("Client public key: " + new String(encoder.encode(clientKey.getPublic().getEncoded())));
 			return clientKey;
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			//e.printStackTrace();
+			System.out.println("Error: this encryption algorithm doesn't exist.");
 			return null;
 		}
 	}
-
-//	public Signature generateSig() {
-//		try {
-//			Signature sig = Signature.getInstance(SigCipherName);
-//			return sig;
-//		} catch (NoSuchAlgorithmException e) {
-//			e.printStackTrace();
-//			return null;
-//		}
-//	}
 
 	public PublicKey getServerKey() {
 		// Create and initialize keypair
@@ -74,24 +67,15 @@ public class EchoClient {
 			KeyFactory keyFac = KeyFactory.getInstance("RSA");
 			return keyFac.generatePublic(serverPubKeySpec);
 		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
+			//e.printStackTrace();
+			System.out.println("Error: this encryption algorithm doesn't exist.");
 			return null;
 		} catch (InvalidKeySpecException e) {
-			e.printStackTrace();
+			//e.printStackTrace();
+			System.out.println("Error: this key spec is invalid.");
 			return null;
 		}
 	}
-
-//	public Signature getServerSignature() {
-//		try {
-//			System.out.println("Please enter the server's signature: ");
-//			Scanner sc = new Scanner(System.in);
-//			String serverKey = sc.next();
-//		}
-//		catch() {
-//
-//		}
-//	}
 
 	/**
 	 * Send a message to server and receive a reply.
@@ -117,7 +101,7 @@ public class EchoClient {
 			byte[] signatureBytes = sig.sign();
 
 			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-			System.out.println("Client sending signature " + new String(encoder.encode(signatureBytes)));
+			//System.out.println("Client sending signature " + new String(encoder.encode(signatureBytes)));
 
 			out.write(cipherTextBytes);
 			out.write(signatureBytes);
@@ -148,9 +132,24 @@ public class EchoClient {
 
 			return decryptedString;
 
-		} catch (Exception e) {
-			e.printStackTrace();
-			System.out.println(e.getMessage());
+		} catch (IOException e) {
+			//e.printStackTrace();
+			System.out.println("Error: problem with file reading/writing. ");
+			return null;
+		} catch (NoSuchAlgorithmException e) {
+			System.out.println("Error: the given algorithm is invalid. ");
+			return null;
+		} catch (InvalidKeyException e) {
+			System.out.println("Error: the given key is invalid. ");
+			return null;
+		} catch (SignatureException e) {
+			System.out.println("Error: problem with signature. ");
+			return null;
+		} catch (NoSuchPaddingException | BadPaddingException e) {
+			System.out.println("Error: problem with the encryption algorithm padding. ");
+			return null;
+		} catch (IllegalBlockSizeException e) {
+			System.out.println("Error: block size is invalid. ");
 			return null;
 		}
 	}
@@ -165,7 +164,7 @@ public class EchoClient {
 			out.close();
 			clientSocket.close();
 		} catch (IOException e) {
-			System.out.println("Error when closing");
+			System.out.println("Error when closing.");
 		}
 	}
 
