@@ -6,6 +6,7 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -37,42 +38,60 @@ public class EchoClient {
 		}
 	}
 
-	public KeyPair generateKey() {
+	public PrivateKey getClientKey(String password, String location) {
 		try {
-			// Create and initialize keypair
-			KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-			keyGen.initialize(2048);
-			KeyPair clientKey = keyGen.generateKeyPair();
-			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Client public key: " + new String(encoder.encode(clientKey.getPublic().getEncoded())));
-			return clientKey;
+			// Get key from keystore
+			KeyStore keyStore = KeyStore.getInstance("JKS");
+			char[] keyStorePassword = "badpassword".toCharArray();
+			try(InputStream keyStoreData = new FileInputStream(location)){
+				keyStore.load(keyStoreData, keyStorePassword);
+			} catch (CertificateException e) {
+				System.out.println("Error: couldn't load key store - is the name correct?");
+			} catch (IOException e) {
+				System.out.println("Error: problem with file reading/writing while getting client key - is the file pathway correct? ");
+			}
+
+			char[] keyPassword = password.toCharArray();
+			Key clientKeyEntry = keyStore.getKey("client", keyPassword);
+			return (PrivateKey)clientKeyEntry;
+
 		} catch (NoSuchAlgorithmException e) {
-			//e.printStackTrace();
 			System.out.println("Error: this encryption algorithm doesn't exist.");
+			return null;
+		} catch (UnrecoverableKeyException e) {
+			System.out.println("Error: could not get client key from keystore");
+			return null;
+		} catch (KeyStoreException e) {
+			System.out.println("Error: this keystore type is invalid. ");
+			//e.printStackTrace();
 			return null;
 		}
 	}
 
-	public PublicKey getServerKey() {
-		// Create and initialize keypair
+	public PublicKey getServerKey(String location) {
 		try {
-			System.out.println("Please enter the server's public key: ");
-			Scanner sc = new Scanner(System.in);
-			String serverKey = sc.next();
+			// Get key from keystore
+			KeyStore keyStore = KeyStore.getInstance("JKS");
+			char[] keyStorePassword = "badpassword".toCharArray();
+			try(InputStream keyStoreData = new FileInputStream(location)){
+				keyStore.load(keyStoreData, keyStorePassword);
+			} catch (CertificateException e) {
+				System.out.println("Error: couldn't load key store - is the name correct?");
+				//e.printStackTrace();
+			} catch (IOException e) {
+				System.out.println("Error: problem with file reading/writing while getting server key - is the file pathway correct? ");
+				//e.printStackTrace();
+			}
 
-			Base64.Decoder decoder = Base64.getDecoder();
-			byte[] serverPubKeyByte = decoder.decode(serverKey);
+			char[] keyPassword = "badpassword".toCharArray();
+			return keyStore.getCertificate("server").getPublicKey();
 
-			X509EncodedKeySpec serverPubKeySpec = new X509EncodedKeySpec(serverPubKeyByte);
-			KeyFactory keyFac = KeyFactory.getInstance("RSA");
-			return keyFac.generatePublic(serverPubKeySpec);
 		} catch (NoSuchAlgorithmException e) {
-			//e.printStackTrace();
 			System.out.println("Error: this encryption algorithm doesn't exist.");
 			return null;
-		} catch (InvalidKeySpecException e) {
+		} catch (KeyStoreException e) {
+			System.out.println("Error: this keystore type is invalid. ");
 			//e.printStackTrace();
-			System.out.println("Error: this key spec is invalid.");
 			return null;
 		}
 	}
@@ -82,9 +101,8 @@ public class EchoClient {
 	 *
 	 * @param msg the message to send
 	 */
-	public String sendMessage(String msg, PublicKey serverPubKey, KeyPair clientKey) {
+	public String sendMessage(String msg, PublicKey serverPubKey, PrivateKey clientKey) {
 		try {
-
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
 			System.out.println("Client sending cleartext " + msg);
@@ -96,7 +114,7 @@ public class EchoClient {
 
 			// Sign data
 			Signature sig = Signature.getInstance(SigCipherName);
-			sig.initSign(clientKey.getPrivate());
+			sig.initSign(clientKey);
 			sig.update(encryptedBytes);
 			byte[] signatureBytes = sig.sign();
 
@@ -111,7 +129,7 @@ public class EchoClient {
 			in.read(inMessage);
 			in.read(inSignature);
 
-			cipher.init(Cipher.DECRYPT_MODE, clientKey.getPrivate());
+			cipher.init(Cipher.DECRYPT_MODE, clientKey);
 
 			// Decrypt data
 			byte[] decryptedBytes = cipher.doFinal(inMessage);
@@ -169,10 +187,14 @@ public class EchoClient {
 	}
 
 	public static void main(String[] args) {
+		if (args.length != 2) {
+			System.out.print("Incorrect arguments - please enter client key password and file store location.");
+			return;
+		}
 		EchoClient client = new EchoClient();
 		client.startConnection("127.0.0.1", 4444);
-		KeyPair clientKey = client.generateKey();
-		PublicKey serverPubKey = client.getServerKey();
+		PrivateKey clientKey = client.getClientKey(args[0], args[1]);
+		PublicKey serverPubKey = client.getServerKey(args[1]);
 		client.sendMessage("12345678", serverPubKey, clientKey);
 		client.sendMessage("ABCDEFGH", serverPubKey, clientKey);
 		client.sendMessage("87654321", serverPubKey, clientKey);

@@ -6,6 +6,7 @@ import java.net.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
@@ -21,27 +22,27 @@ public class EchoServer {
 	private DataOutputStream out;
 	private DataInputStream in;
 
-	public PublicKey getClientKey(){
-		// Create and initialize keypair
-		try {
-			System.out.println("Please enter the client's public key: ");
-			Scanner sc = new Scanner(System.in);
-			String clientKey = sc.next();
-
-			Base64.Decoder decoder = Base64.getDecoder();
-			byte[] clientPubKeyByte = decoder.decode(clientKey);
-
-			X509EncodedKeySpec clientPubKeySpec = new X509EncodedKeySpec(clientPubKeyByte);
-			KeyFactory keyFac = KeyFactory.getInstance("RSA");
-			return keyFac.generatePublic(clientPubKeySpec);
-		} catch (NoSuchAlgorithmException e) {
-			System.out.println("Error: the given algorithm is invalid. ");
-			return null;
-		} catch (InvalidKeySpecException e) {
-			System.out.println("Error: this key spec is invalid.");
-			return null;
-		}
-	}
+//	public PublicKey getClientKey(){
+//		// Create and initialize keypair
+//		try {
+//			System.out.println("Please enter the client's public key: ");
+//			Scanner sc = new Scanner(System.in);
+//			String clientKey = sc.next();
+//
+//			Base64.Decoder decoder = Base64.getDecoder();
+//			byte[] clientPubKeyByte = decoder.decode(clientKey);
+//
+//			X509EncodedKeySpec clientPubKeySpec = new X509EncodedKeySpec(clientPubKeyByte);
+//			KeyFactory keyFac = KeyFactory.getInstance("RSA");
+//			return keyFac.generatePublic(clientPubKeySpec);
+//		} catch (NoSuchAlgorithmException e) {
+//			System.out.println("Error: the given algorithm is invalid. ");
+//			return null;
+//		} catch (InvalidKeySpecException e) {
+//			System.out.println("Error: this key spec is invalid.");
+//			return null;
+//		}
+//	}
 
 
 	/**
@@ -50,7 +51,7 @@ public class EchoServer {
 	 *
 	 * @param port the port number of the server
 	 */
-	public void start(int port) {
+	public void start(int port, String password, String location) {
 		try {
 			System.out.println("Waiting for client...");
 
@@ -61,22 +62,31 @@ public class EchoServer {
 			byte[] data = new byte[256];
 			byte[] inSignature = new byte[256];
 
-			PublicKey clientPubKey = getClientKey();
+			// Get keys from keystore
+			KeyStore keyStore = KeyStore.getInstance("JKS");
+			char[] keyStorePassword = "badpassword".toCharArray();
+			try(InputStream keyStoreData = new FileInputStream(location)){
+				keyStore.load(keyStoreData, keyStorePassword);
+			} catch (CertificateException e) {
+				System.out.println("Error: couldn't load key store.");
+			}
+
+			char[] keyPassword = password.toCharArray();
+
+			PublicKey clientPubKey = keyStore.getCertificate("client").getPublicKey();
+			Key serverKeyEntry = keyStore.getKey("server", keyPassword);
+			PrivateKey serverKey = (PrivateKey)serverKeyEntry;
 
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Signature sig = Signature.getInstance(SigCipherName);
-			KeyPairGenerator keyGen = null;
-			keyGen = KeyPairGenerator.getInstance("RSA");
-			keyGen.initialize(2048);
-			KeyPair serverKey = keyGen.generateKeyPair();
+
 			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Sever public key: " + new String(encoder.encode(serverKey.getPublic().getEncoded())));
 
 			int numBytes;
 			while ((numBytes = in.read(data)) != -1) {
 				in.read(inSignature);
 
-				cipher.init(Cipher.DECRYPT_MODE, serverKey.getPrivate());
+				cipher.init(Cipher.DECRYPT_MODE, serverKey);
 
 				// Decrypt data
 				byte[] decryptedBytes = cipher.doFinal(data);
@@ -101,7 +111,7 @@ public class EchoServer {
 				byte[] cipherTextBytes = cipher.doFinal(originalBytes);
 
 				// Sign data
-				sig.initSign(serverKey.getPrivate());
+				sig.initSign(serverKey);
 				sig.update(originalBytes);
 				byte[] signatureBytes = sig.sign();
 
@@ -116,7 +126,7 @@ public class EchoServer {
 			stop();
 		} catch (IOException e) {
 			//e.printStackTrace();
-			System.out.println("Error: problem with file reading/writing. ");
+			System.out.println("Error: problem with file reading/writing - is the file location correct? ");
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("Error: the given algorithm is invalid. ");
 		} catch (InvalidKeyException e) {
@@ -127,6 +137,10 @@ public class EchoServer {
 			System.out.println("Error: problem with the encryption algorithm padding. ");
 		} catch (IllegalBlockSizeException e) {
 			System.out.println("Error: block size is invalid. ");
+		} catch (KeyStoreException e) {
+			System.out.println("Error: this keystore type is invalid. ");
+		} catch (UnrecoverableEntryException e) {
+			System.out.println("Error: could not get key from keystore");
 		}
 
 	}
@@ -150,7 +164,11 @@ public class EchoServer {
 
 	public static void main(String[] args) {
 		EchoServer server = new EchoServer();
-		server.start(4444);
+		if (args.length != 2){
+			System.out.print("Incorrect arguments - please enter server key password and file store location.");
+		} else {
+			server.start(4444, args[0], args[1]);
+		}
 	}
 
 }
