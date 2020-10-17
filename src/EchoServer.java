@@ -13,6 +13,9 @@ import java.util.Scanner;
 
 public class EchoServer {
 
+	private String EncCipherName = "RSA/ECB/PKCS1Padding";
+	private String SigCipherName = "SHA256withRSA";
+
 	private ServerSocket serverSocket;
 	private Socket clientSocket;
 	private DataOutputStream out;
@@ -49,9 +52,6 @@ public class EchoServer {
 	 */
 	public void start(int port) {
 		try {
-			String encCipherName = "RSA/ECB/PKCS1Padding";
-			String signCipherName = "SHA256withRSA";
-
 			System.out.println("Waiting for client...");
 
 			serverSocket = new ServerSocket(port);
@@ -59,9 +59,12 @@ public class EchoServer {
 			out = new DataOutputStream(clientSocket.getOutputStream());
 			in = new DataInputStream(clientSocket.getInputStream());
 			byte[] data = new byte[256];
+			byte[] inSignature = new byte[256];
 
 			PublicKey clientPubKey = getClientKey();
 
+			Cipher cipher = Cipher.getInstance(EncCipherName);
+			Signature sig = Signature.getInstance(SigCipherName);
 			KeyPairGenerator keyGen = null;
 			keyGen = KeyPairGenerator.getInstance("RSA");
 			keyGen.initialize(2048);
@@ -71,22 +74,43 @@ public class EchoServer {
 
 			int numBytes;
 			while ((numBytes = in.read(data)) != -1) {
-				Cipher cipher = Cipher.getInstance(encCipherName);
+				in.read(inSignature);
+
 				cipher.init(Cipher.DECRYPT_MODE, serverKey.getPrivate());
 
-				// decrypt data
+				// Decrypt data
 				byte[] decryptedBytes = cipher.doFinal(data);
 				String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
 				System.out.println("Server received cleartext " + decryptedString);
 
-				// encrypt data
+				// Authenticate signature
+				System.out.println("Checking signature...");
+				sig.initVerify(clientPubKey);
+				sig.update(decryptedBytes);
+
+				final boolean signatureValid = sig.verify(inSignature);
+				if (signatureValid) {
+					System.out.println("Client signature is valid");
+				} else {
+					throw new IllegalArgumentException("Signature does not match");
+				}
+
+				// Encrypt data
 				cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
 				final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
 				byte[] cipherTextBytes = cipher.doFinal(originalBytes);
 
+				// Sign data
+				sig.initSign(serverKey.getPrivate());
+				sig.update(originalBytes);
+				byte[] signatureBytes = sig.sign();
+
 				// encrypt response (this is just the decrypted data re-encrypted)
-				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes))); //TODO - wrong?
+				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+				System.out.println("Server sending signature " + new String(encoder.encode(signatureBytes)));
+
 				out.write(cipherTextBytes);
+				out.write(signatureBytes);
 				out.flush();
 			}
 			stop();
@@ -101,6 +125,8 @@ public class EchoServer {
 		} catch (BadPaddingException e) {
 			e.printStackTrace();
 		} catch (IllegalBlockSizeException e) {
+			e.printStackTrace();
+		} catch (SignatureException e) {
 			e.printStackTrace();
 		}
 

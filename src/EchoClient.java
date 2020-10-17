@@ -11,6 +11,9 @@ import java.util.Scanner;
 
 public class EchoClient {
 
+	private String SigCipherName = "SHA256withRSA";
+	private String EncCipherName = "RSA/ECB/PKCS1Padding";
+
 	private Socket clientSocket;
 	private DataOutputStream out;
 	private DataInputStream in;
@@ -47,7 +50,17 @@ public class EchoClient {
 		}
 	}
 
-	public PublicKey getServerKey(){
+//	public Signature generateSig() {
+//		try {
+//			Signature sig = Signature.getInstance(SigCipherName);
+//			return sig;
+//		} catch (NoSuchAlgorithmException e) {
+//			e.printStackTrace();
+//			return null;
+//		}
+//	}
+
+	public PublicKey getServerKey() {
 		// Create and initialize keypair
 		try {
 			System.out.println("Please enter the server's public key: ");
@@ -69,6 +82,17 @@ public class EchoClient {
 		}
 	}
 
+//	public Signature getServerSignature() {
+//		try {
+//			System.out.println("Please enter the server's signature: ");
+//			Scanner sc = new Scanner(System.in);
+//			String serverKey = sc.next();
+//		}
+//		catch() {
+//
+//		}
+//	}
+
 	/**
 	 * Send a message to server and receive a reply.
 	 *
@@ -76,37 +100,57 @@ public class EchoClient {
 	 */
 	public String sendMessage(String msg, PublicKey serverPubKey, KeyPair clientKey) {
 		try {
-			String encCipherName = "RSA/ECB/PKCS1Padding";
-			String signCipherName = "SHA256withRSA";
-			Cipher cipher = Cipher.getInstance(encCipherName);
-			//cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
+
+			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
-
 			System.out.println("Client sending cleartext " + msg);
-			byte[] data = msg.getBytes("UTF-8");
+			byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
 
-			// encrypt data
+			// Encrypt data
 			cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
-			final byte[] encryptedBytes = data;
 			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
-			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes))); //TODO - wrong?
+
+			// Sign data
+			Signature sig = Signature.getInstance(SigCipherName);
+			sig.initSign(clientKey.getPrivate());
+			sig.update(encryptedBytes);
+			byte[] signatureBytes = sig.sign();
+
+			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+			System.out.println("Client sending signature " + new String(encoder.encode(signatureBytes)));
 
 			out.write(cipherTextBytes);
+			out.write(signatureBytes);
 			out.flush();
 			byte[] inMessage = new byte[256];
+			byte[] inSignature = new byte[256];
 			in.read(inMessage);
+			in.read(inSignature);
 
 			cipher.init(Cipher.DECRYPT_MODE, clientKey.getPrivate());
 
-			// decrypt data
+			// Decrypt data
 			byte[] decryptedBytes = cipher.doFinal(inMessage);
 			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
 			System.out.println("Server returned cleartext " + decryptedString);
+
+			// Authenticate signature
+			System.out.println("Checking signature...");
+			sig.initVerify(serverPubKey);
+			sig.update(decryptedBytes);
+
+			final boolean signatureValid = sig.verify(inSignature);
+			if (signatureValid) {
+				System.out.println("Server signature is valid");
+			} else {
+				throw new IllegalArgumentException("Signature does not match");
+			}
+
 			return decryptedString;
 
 		} catch (Exception e) {
 			e.printStackTrace();
-			System.out.println("FUCK " + e.getMessage());
+			System.out.println(e.getMessage());
 			return null;
 		}
 	}
