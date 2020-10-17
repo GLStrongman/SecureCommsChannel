@@ -63,7 +63,6 @@ public class EchoClient {
 			return null;
 		} catch (KeyStoreException e) {
 			System.out.println("Error: this keystore type is invalid. ");
-			//e.printStackTrace();
 			return null;
 		}
 	}
@@ -77,10 +76,8 @@ public class EchoClient {
 				keyStore.load(keyStoreData, keyStorePassword);
 			} catch (CertificateException e) {
 				System.out.println("Error: couldn't load key store - is the name correct?");
-				//e.printStackTrace();
 			} catch (IOException e) {
 				System.out.println("Error: problem with file reading/writing while getting server key - is the file pathway correct? ");
-				//e.printStackTrace();
 			}
 
 			char[] keyPassword = "badpassword".toCharArray();
@@ -91,7 +88,6 @@ public class EchoClient {
 			return null;
 		} catch (KeyStoreException e) {
 			System.out.println("Error: this keystore type is invalid. ");
-			//e.printStackTrace();
 			return null;
 		}
 	}
@@ -119,7 +115,6 @@ public class EchoClient {
 			byte[] signatureBytes = sig.sign();
 
 			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-			//System.out.println("Client sending signature " + new String(encoder.encode(signatureBytes)));
 
 			out.write(cipherTextBytes);
 			out.write(signatureBytes);
@@ -151,7 +146,6 @@ public class EchoClient {
 			return decryptedString;
 
 		} catch (IOException e) {
-			//e.printStackTrace();
 			System.out.println("Error: problem with file reading/writing. ");
 			return null;
 		} catch (NoSuchAlgorithmException e) {

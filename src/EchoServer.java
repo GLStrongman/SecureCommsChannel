@@ -22,29 +22,6 @@ public class EchoServer {
 	private DataOutputStream out;
 	private DataInputStream in;
 
-//	public PublicKey getClientKey(){
-//		// Create and initialize keypair
-//		try {
-//			System.out.println("Please enter the client's public key: ");
-//			Scanner sc = new Scanner(System.in);
-//			String clientKey = sc.next();
-//
-//			Base64.Decoder decoder = Base64.getDecoder();
-//			byte[] clientPubKeyByte = decoder.decode(clientKey);
-//
-//			X509EncodedKeySpec clientPubKeySpec = new X509EncodedKeySpec(clientPubKeyByte);
-//			KeyFactory keyFac = KeyFactory.getInstance("RSA");
-//			return keyFac.generatePublic(clientPubKeySpec);
-//		} catch (NoSuchAlgorithmException e) {
-//			System.out.println("Error: the given algorithm is invalid. ");
-//			return null;
-//		} catch (InvalidKeySpecException e) {
-//			System.out.println("Error: this key spec is invalid.");
-//			return null;
-//		}
-//	}
-
-
 	/**
 	 * Create the server socket and wait for a connection.
 	 * Keep receiving messages until the input stream is closed by the client.
@@ -70,16 +47,13 @@ public class EchoServer {
 			} catch (CertificateException e) {
 				System.out.println("Error: couldn't load key store.");
 			}
-
 			char[] keyPassword = password.toCharArray();
 
 			PublicKey clientPubKey = keyStore.getCertificate("client").getPublicKey();
 			Key serverKeyEntry = keyStore.getKey("server", keyPassword);
 			PrivateKey serverKey = (PrivateKey)serverKeyEntry;
-
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Signature sig = Signature.getInstance(SigCipherName);
-
 			Base64.Encoder encoder = Base64.getEncoder();
 
 			int numBytes;
@@ -117,7 +91,6 @@ public class EchoServer {
 
 				// Encrypt response (this is just the decrypted data re-encrypted)
 				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-				//System.out.println("Server sending signature " + new String(encoder.encode(signatureBytes)));
 
 				out.write(cipherTextBytes);
 				out.write(signatureBytes);
@@ -125,7 +98,6 @@ public class EchoServer {
 			}
 			stop();
 		} catch (IOException e) {
-			//e.printStackTrace();
 			System.out.println("Error: problem with file reading/writing - is the file location correct? ");
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("Error: the given algorithm is invalid. ");
@@ -142,7 +114,6 @@ public class EchoServer {
 		} catch (UnrecoverableEntryException e) {
 			System.out.println("Error: could not get key from keystore");
 		}
-
 	}
 
 	/**
@@ -156,7 +127,6 @@ public class EchoServer {
 			clientSocket.close();
 			serverSocket.close();
 		} catch (IOException e) {
-			//System.out.println(e.getMessage());
 			System.out.println("Error while closing server.");
 		}
 
@@ -170,5 +140,4 @@ public class EchoServer {
 			server.start(4444, args[0], args[1]);
 		}
 	}
-
 }
