@@ -46,9 +46,7 @@ public class EchoClient {
 
 	public Key generateMasterKey() {
 		try {
-			//byte[] IV = new byte[16];
 			SecureRandom secRand = new SecureRandom();
-			//secRand.nextBytes(IV);
 			KeyGenerator keyGen = KeyGenerator.getInstance("AES");
 			keyGen.init(128, secRand);
 			return keyGen.generateKey();
@@ -56,7 +54,6 @@ public class EchoClient {
 			e.printStackTrace();
 			return null;
 		}
-
 	}
 
 	public PrivateKey getClientKey(String password, String location) {
@@ -119,7 +116,6 @@ public class EchoClient {
 	 */
 	public String sendMasterKey(PublicKey serverPubKey, PrivateKey clientKey) {
 		try {
-
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
 			System.out.println("Client sending master key " + new String(encoder.encode(masterKey.getEncoded())));
@@ -150,7 +146,6 @@ public class EchoClient {
 			// Decrypt data
 			byte[] decryptedBytes = cipher.doFinal(inMessage);
 			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-			//System.out.println("Server returned cleartext " + decryptedString);
 
 			// Authenticate signature
 			System.out.println("Checking signature...");
@@ -222,13 +217,10 @@ public class EchoClient {
 			System.out.println("Client sending cleartext " + msg);
 			byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
 
-
-
 			// Encrypt data
 			cipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
 			cipher.updateAAD(AADTag);
 			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
-
 
 			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
 			out.write(cipherTextBytes);
@@ -239,7 +231,6 @@ public class EchoClient {
 			in.read(inMessage);
 			in.read(nonce);
 			gcm = new GCMParameterSpec(128, nonce);
-
 			cipher.init(Cipher.DECRYPT_MODE, masterKey, gcm);
 			cipher.updateAAD(AADTag);
 
