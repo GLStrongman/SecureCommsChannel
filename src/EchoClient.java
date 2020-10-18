@@ -1,7 +1,6 @@
-import javax.crypto.BadPaddingException;
-import javax.crypto.Cipher;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
+import javax.crypto.*;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +20,8 @@ public class EchoClient {
 	private DataOutputStream out;
 	private DataInputStream in;
 
+	private byte[] AADTag = "auth".getBytes();
+
 	/**
 	 * Setup the two way streams.
 	 *
@@ -36,6 +37,21 @@ public class EchoClient {
 		} catch (IOException e) {
 			System.out.println("Error when initializing connection");
 		}
+	}
+
+	public Key generateMasterKey() {
+		try {
+			//byte[] IV = new byte[16];
+			SecureRandom secRand = new SecureRandom();
+			//secRand.nextBytes(IV);
+			KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+			keyGen.init(128, secRand);
+			return keyGen.generateKey();
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+			return null;
+		}
+
 	}
 
 	public PrivateKey getClientKey(String password, String location) {
@@ -95,28 +111,28 @@ public class EchoClient {
 	/**
 	 * Send a message to server and receive a reply.
 	 *
-	 * @param msg the message to send
 	 */
-	public String sendMessage(String msg, PublicKey serverPubKey, PrivateKey clientKey) {
+	public String sendMasterKey(PublicKey serverPubKey, PrivateKey clientKey, Key masterKey) {
 		try {
+
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Client sending cleartext " + msg);
-			byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
+			System.out.println("Client sending master key " + masterKey.getEncoded());
+			byte[] encryptedMasterKey = masterKey.getEncoded();
 
 			// Encrypt data
 			cipher.init(Cipher.ENCRYPT_MODE, serverPubKey);
-			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
+			byte[] masterKeyBytes = cipher.doFinal(encryptedMasterKey);
 
 			// Sign data
 			Signature sig = Signature.getInstance(SigCipherName);
 			sig.initSign(clientKey);
-			sig.update(encryptedBytes);
+			sig.update(encryptedMasterKey);
 			byte[] signatureBytes = sig.sign();
 
-			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+			System.out.println("Client sending ciphertext " + new String(encoder.encode(masterKeyBytes)));
 
-			out.write(cipherTextBytes);
+			out.write(masterKeyBytes);
 			out.write(signatureBytes);
 			out.flush();
 			byte[] inMessage = new byte[256];
@@ -167,6 +183,71 @@ public class EchoClient {
 	}
 
 	/**
+	 * Send a message to server and receive a reply.
+	 *
+	 * @param msg the message to send
+	 */
+	public String sendMessage(String msg, Key masterKey) {
+		try {
+			byte[] iv = new byte[16];
+			SecureRandom sr =  new SecureRandom();
+			sr.nextBytes(iv);
+			GCMParameterSpec gcm = new GCMParameterSpec(128, iv);
+
+			Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+			Base64.Encoder encoder = Base64.getEncoder();
+			System.out.println("Client sending cleartext " + msg);
+			byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
+
+			// Encrypt data
+			cipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
+			cipher.updateAAD(AADTag);
+			byte[] cipherTextBytes = cipher.doFinal(encryptedBytes);
+
+
+			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+
+			out.write(cipherTextBytes);
+			out.write(iv);
+			out.flush();
+			byte[] inMessage = new byte[256];
+			byte[] nonce = new byte[16];
+			in.read(inMessage);
+			in.read(nonce);
+			gcm = new GCMParameterSpec(128, nonce);
+
+			cipher.init(Cipher.DECRYPT_MODE, masterKey, gcm);
+			cipher.updateAAD(AADTag);
+
+			// Decrypt data
+			byte[] decryptedBytes = cipher.doFinal(inMessage);
+			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+			System.out.println("Server returned cleartext " + decryptedString);
+
+			return decryptedString;
+
+		} catch (IOException e) {
+			System.out.println("Error: problem with file reading/writing. ");
+			return null;
+		} catch (NoSuchAlgorithmException e) {
+			System.out.println("Error: the given algorithm is invalid. ");
+			return null;
+		} catch (InvalidKeyException e) {
+			System.out.println("Error: the given key is invalid. ");
+			return null;
+		} catch (NoSuchPaddingException | BadPaddingException e) {
+			System.out.println("Error: problem with the encryption algorithm padding. ");
+			return null;
+		} catch (IllegalBlockSizeException e) {
+			System.out.println("Error: block size is invalid. ");
+			return null;
+		} catch (InvalidAlgorithmParameterException e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	/**
 	 * Close down our streams.
 	 *
 	 */
@@ -185,14 +266,17 @@ public class EchoClient {
 			System.out.print("Incorrect arguments - please enter client key password and file store location.");
 			return;
 		}
+
 		EchoClient client = new EchoClient();
+		Key masterKey = client.generateMasterKey();
 		client.startConnection("127.0.0.1", 4444);
 		PrivateKey clientKey = client.getClientKey(args[0], args[1]);
 		PublicKey serverPubKey = client.getServerKey(args[1]);
-		client.sendMessage("12345678", serverPubKey, clientKey);
-		client.sendMessage("ABCDEFGH", serverPubKey, clientKey);
-		client.sendMessage("87654321", serverPubKey, clientKey);
-		client.sendMessage("HGFEDCBA", serverPubKey, clientKey);
+		client.sendMasterKey(serverPubKey, clientKey, masterKey);
+		client.sendMessage("12345678", masterKey);
+		client.sendMessage("ABCDEFGH", masterKey);
+		client.sendMessage("87654321", masterKey);
+		client.sendMessage("HGFEDCBA", masterKey);
 		client.stopConnection();
 	}
 }

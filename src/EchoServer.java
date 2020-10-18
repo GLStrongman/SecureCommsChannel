@@ -2,6 +2,9 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.net.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -22,6 +25,9 @@ public class EchoServer {
 	private DataOutputStream out;
 	private DataInputStream in;
 
+	private Key masterKey = null;
+	private byte[] AADTag = "auth".getBytes();
+
 	/**
 	 * Create the server socket and wait for a connection.
 	 * Keep receiving messages until the input stream is closed by the client.
@@ -38,6 +44,7 @@ public class EchoServer {
 			in = new DataInputStream(clientSocket.getInputStream());
 			byte[] data = new byte[256];
 			byte[] inSignature = new byte[256];
+			byte[] nonce = new byte[16];
 
 			// Get keys from keystore
 			KeyStore keyStore = KeyStore.getInstance("JKS");
@@ -52,49 +59,76 @@ public class EchoServer {
 			PublicKey clientPubKey = keyStore.getCertificate("client").getPublicKey();
 			Key serverKeyEntry = keyStore.getKey("server", keyPassword);
 			PrivateKey serverKey = (PrivateKey)serverKeyEntry;
+
 			Cipher cipher = Cipher.getInstance(EncCipherName);
+			Cipher symCipher = Cipher.getInstance("AES/GCM/NoPadding");
 			Signature sig = Signature.getInstance(SigCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
 
 			int numBytes;
 			while ((numBytes = in.read(data)) != -1) {
-				in.read(inSignature);
+				if (masterKey == null){
+					in.read(inSignature);
+					cipher.init(Cipher.DECRYPT_MODE, serverKey);
+					// Decrypt data
+					byte[] decryptedBytes = cipher.doFinal(data);
+					String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+					System.out.println("Server master key " + decryptedString);
 
-				cipher.init(Cipher.DECRYPT_MODE, serverKey);
+					// Authenticate signature
+					System.out.println("Checking signature...");
+					sig.initVerify(clientPubKey);
+					sig.update(decryptedBytes);
 
-				// Decrypt data
-				byte[] decryptedBytes = cipher.doFinal(data);
-				String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-				System.out.println("Server received cleartext " + decryptedString);
+					final boolean signatureValid = sig.verify(inSignature);
+					if (signatureValid) {
+						System.out.println("Client signature is valid");
+					} else {
+						throw new IllegalArgumentException("Signature does not match");
+					}
 
-				// Authenticate signature
-				System.out.println("Checking signature...");
-				sig.initVerify(clientPubKey);
-				sig.update(decryptedBytes);
+					masterKey = new SecretKeySpec(decryptedBytes, "AES");
 
-				final boolean signatureValid = sig.verify(inSignature);
-				if (signatureValid) {
-					System.out.println("Client signature is valid");
+					// Encrypt data
+					cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
+					final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
+					byte[] cipherTextBytes = cipher.doFinal(originalBytes);
+
+					// Sign data
+					sig.initSign(serverKey);
+					sig.update(originalBytes);
+					byte[] signatureBytes = sig.sign();
+
+					// Encrypt response (this is just the decrypted data re-encrypted)
+					System.out.println("Server returning master key " + new String(encoder.encode(cipherTextBytes)));
+
+					out.write(cipherTextBytes);
+					out.write(signatureBytes);
+					out.flush();
 				} else {
-					throw new IllegalArgumentException("Signature does not match");
+					in.read(nonce);
+					GCMParameterSpec gcm = new GCMParameterSpec(128, nonce);
+
+					// Decrypt data
+					symCipher.init(Cipher.DECRYPT_MODE, masterKey, gcm);
+					symCipher.updateAAD(AADTag);
+					byte[] decryptedBytes = symCipher.doFinal(data);
+					String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+					System.out.println("Server received cleartext " + decryptedString);
+
+					// Encrypt data
+					symCipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
+					symCipher.updateAAD(AADTag);
+					final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
+					byte[] cipherTextBytes = symCipher.doFinal(originalBytes);
+
+					// Encrypt response (this is just the decrypted data re-encrypted)
+					System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+
+					out.write(cipherTextBytes);
+					out.write(nonce);
+					out.flush();
 				}
-
-				// Encrypt data
-				cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
-				final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
-				byte[] cipherTextBytes = cipher.doFinal(originalBytes);
-
-				// Sign data
-				sig.initSign(serverKey);
-				sig.update(originalBytes);
-				byte[] signatureBytes = sig.sign();
-
-				// Encrypt response (this is just the decrypted data re-encrypted)
-				System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-
-				out.write(cipherTextBytes);
-				out.write(signatureBytes);
-				out.flush();
 			}
 			stop();
 		} catch (IOException e) {
@@ -102,17 +136,21 @@ public class EchoServer {
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("Error: the given algorithm is invalid. ");
 		} catch (InvalidKeyException e) {
+			e.printStackTrace();
 			System.out.println("Error: the given key is invalid. ");
 		} catch (SignatureException e) {
 			System.out.println("Error: problem with signature. ");
 		} catch (NoSuchPaddingException | BadPaddingException e) {
 			System.out.println("Error: problem with the encryption algorithm padding. ");
+			e.printStackTrace();
 		} catch (IllegalBlockSizeException e) {
 			System.out.println("Error: block size is invalid. ");
 		} catch (KeyStoreException e) {
 			System.out.println("Error: this keystore type is invalid. ");
 		} catch (UnrecoverableEntryException e) {
 			System.out.println("Error: could not get key from keystore");
+		} catch (InvalidAlgorithmParameterException e) {
+			e.printStackTrace();
 		}
 	}
 
