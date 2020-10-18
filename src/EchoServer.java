@@ -92,13 +92,11 @@ public class EchoServer {
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("Error: the given algorithm is invalid. ");
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
 			System.out.println("Error: the given key is invalid. ");
 		} catch (SignatureException e) {
 			System.out.println("Error: problem with signature. ");
 		} catch (NoSuchPaddingException | BadPaddingException e) {
 			System.out.println("Error: problem with the encryption algorithm padding. ");
-			e.printStackTrace();
 		} catch (IllegalBlockSizeException e) {
 			System.out.println("Error: block size is invalid. ");
 		} catch (KeyStoreException e) {
@@ -167,15 +165,13 @@ public class EchoServer {
 		} catch (NoSuchAlgorithmException e) {
 			System.out.println("Error: the given algorithm is invalid. ");
 		} catch (InvalidKeyException e) {
-			e.printStackTrace();
 			System.out.println("Error: the given key is invalid. ");
 		} catch (NoSuchPaddingException | BadPaddingException e) {
 			System.out.println("Error: problem with the encryption algorithm padding. ");
-			e.printStackTrace();
 		} catch (IllegalBlockSizeException e) {
 			System.out.println("Error: block size is invalid. ");
 		} catch (InvalidAlgorithmParameterException e) {
-			e.printStackTrace();
+			System.out.println("Look, I don't know what you did, but it wasn't good.");
 		}
 	}
 
