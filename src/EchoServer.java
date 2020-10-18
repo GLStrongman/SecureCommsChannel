@@ -194,7 +194,7 @@ public class EchoServer {
 	public static void main(String[] args) {
 		EchoServer server = new EchoServer();
 		if (args.length != 2){
-			System.out.print("Incorrect arguments - please enter server key password and file store location.");
+			System.out.print("Incorrect arguments - please enter server key password, file store location, and maximum number of messages to be sent in one session.");
 		} else {
 			server.start(4444, args[0], args[1]);
 		}
