@@ -117,7 +117,7 @@ public class EchoClient {
 
 			Cipher cipher = Cipher.getInstance(EncCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
-			System.out.println("Client sending master key " + masterKey.getEncoded());
+			System.out.println("Client sending master key " + new String(encoder.encode(masterKey.getEncoded())));
 			byte[] encryptedMasterKey = masterKey.getEncoded();
 
 			// Encrypt data
@@ -145,7 +145,7 @@ public class EchoClient {
 			// Decrypt data
 			byte[] decryptedBytes = cipher.doFinal(inMessage);
 			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-			System.out.println("Server returned cleartext " + decryptedString);
+			//System.out.println("Server returned cleartext " + decryptedString);
 
 			// Authenticate signature
 			System.out.println("Checking signature...");
@@ -189,6 +189,19 @@ public class EchoClient {
 	 */
 	public String sendMessage(String msg, Key masterKey) {
 		try {
+			// Check that message is not too long
+			if (msg.length() > 32){
+				System.out.println("Error: message is too long!");
+				return null;
+			}
+
+			// Pad message
+			if (msg.length() < 32){
+				for (int i = 0; i < (32-msg.length()); i++){
+					msg += " ";
+				}
+			}
+
 			byte[] iv = new byte[16];
 			SecureRandom sr =  new SecureRandom();
 			sr.nextBytes(iv);
@@ -199,6 +212,8 @@ public class EchoClient {
 			System.out.println("Client sending cleartext " + msg);
 			byte[] encryptedBytes = msg.getBytes(StandardCharsets.UTF_8);
 
+
+
 			// Encrypt data
 			cipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
 			cipher.updateAAD(AADTag);
@@ -206,11 +221,11 @@ public class EchoClient {
 
 
 			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-
+			System.out.println("LENGTH: " + cipherTextBytes.length);
 			out.write(cipherTextBytes);
 			out.write(iv);
 			out.flush();
-			byte[] inMessage = new byte[256];
+			byte[] inMessage = new byte[32];
 			byte[] nonce = new byte[16];
 			in.read(inMessage);
 			in.read(nonce);

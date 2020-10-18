@@ -12,6 +12,7 @@ import java.security.*;
 import java.security.cert.CertificateException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
 
@@ -28,23 +29,9 @@ public class EchoServer {
 	private Key masterKey = null;
 	private byte[] AADTag = "auth".getBytes();
 
-	/**
-	 * Create the server socket and wait for a connection.
-	 * Keep receiving messages until the input stream is closed by the client.
-	 *
-	 * @param port the port number of the server
-	 */
-	public void start(int port, String password, String location) {
+	public void getMasterKey(DataInputStream in, DataOutputStream out, String location, String password, byte[] key) {
 		try {
-			System.out.println("Waiting for client...");
-
-			serverSocket = new ServerSocket(port);
-			clientSocket = serverSocket.accept();
-			out = new DataOutputStream(clientSocket.getOutputStream());
-			in = new DataInputStream(clientSocket.getInputStream());
-			byte[] data = new byte[256];
 			byte[] inSignature = new byte[256];
-			byte[] nonce = new byte[16];
 
 			// Get keys from keystore
 			KeyStore keyStore = KeyStore.getInstance("JKS");
@@ -61,76 +48,46 @@ public class EchoServer {
 			PrivateKey serverKey = (PrivateKey)serverKeyEntry;
 
 			Cipher cipher = Cipher.getInstance(EncCipherName);
-			Cipher symCipher = Cipher.getInstance("AES/GCM/NoPadding");
 			Signature sig = Signature.getInstance(SigCipherName);
 			Base64.Encoder encoder = Base64.getEncoder();
 
-			int numBytes;
-			while ((numBytes = in.read(data)) != -1) {
-				if (masterKey == null){
-					in.read(inSignature);
-					cipher.init(Cipher.DECRYPT_MODE, serverKey);
-					// Decrypt data
-					byte[] decryptedBytes = cipher.doFinal(data);
-					String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-					System.out.println("Server master key " + decryptedString);
+			in.read(inSignature);
+			cipher.init(Cipher.DECRYPT_MODE, serverKey);
+			// Decrypt data
+			byte[] decryptedBytes = cipher.doFinal(key);
+			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+			System.out.println("Server master key " + masterKey);
 
-					// Authenticate signature
-					System.out.println("Checking signature...");
-					sig.initVerify(clientPubKey);
-					sig.update(decryptedBytes);
+			// Authenticate signature
+			System.out.println("Checking signature...");
+			sig.initVerify(clientPubKey);
+			sig.update(decryptedBytes);
 
-					final boolean signatureValid = sig.verify(inSignature);
-					if (signatureValid) {
-						System.out.println("Client signature is valid");
-					} else {
-						throw new IllegalArgumentException("Signature does not match");
-					}
-
-					masterKey = new SecretKeySpec(decryptedBytes, "AES");
-
-					// Encrypt data
-					cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
-					final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
-					byte[] cipherTextBytes = cipher.doFinal(originalBytes);
-
-					// Sign data
-					sig.initSign(serverKey);
-					sig.update(originalBytes);
-					byte[] signatureBytes = sig.sign();
-
-					// Encrypt response (this is just the decrypted data re-encrypted)
-					System.out.println("Server returning master key " + new String(encoder.encode(cipherTextBytes)));
-
-					out.write(cipherTextBytes);
-					out.write(signatureBytes);
-					out.flush();
-				} else {
-					in.read(nonce);
-					GCMParameterSpec gcm = new GCMParameterSpec(128, nonce);
-
-					// Decrypt data
-					symCipher.init(Cipher.DECRYPT_MODE, masterKey, gcm);
-					symCipher.updateAAD(AADTag);
-					byte[] decryptedBytes = symCipher.doFinal(data);
-					String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-					System.out.println("Server received cleartext " + decryptedString);
-
-					// Encrypt data
-					symCipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
-					symCipher.updateAAD(AADTag);
-					final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
-					byte[] cipherTextBytes = symCipher.doFinal(originalBytes);
-
-					// Encrypt response (this is just the decrypted data re-encrypted)
-					System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-
-					out.write(cipherTextBytes);
-					out.write(nonce);
-					out.flush();
-				}
+			final boolean signatureValid = sig.verify(inSignature);
+			if (signatureValid) {
+				System.out.println("Client signature is valid");
+			} else {
+				throw new IllegalArgumentException("Signature does not match");
 			}
-			stop();
+
+			masterKey = new SecretKeySpec(decryptedBytes, "AES");
+
+			// Encrypt data
+			cipher.init(Cipher.ENCRYPT_MODE, clientPubKey);
+			final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
+			byte[] cipherTextBytes = cipher.doFinal(originalBytes);
+
+			// Sign data
+			sig.initSign(serverKey);
+			sig.update(originalBytes);
+			byte[] signatureBytes = sig.sign();
+
+			// Encrypt response (this is just the decrypted data re-encrypted)
+			System.out.println("Server returning master key " + new String(encoder.encode(masterKey.getEncoded())));
+
+			out.write(cipherTextBytes);
+			out.write(signatureBytes);
+			out.flush();
 		} catch (IOException e) {
 			System.out.println("Error: problem with file reading/writing - is the file location correct? ");
 		} catch (NoSuchAlgorithmException e) {
@@ -149,6 +106,75 @@ public class EchoServer {
 			System.out.println("Error: this keystore type is invalid. ");
 		} catch (UnrecoverableEntryException e) {
 			System.out.println("Error: could not get key from keystore");
+		}
+	}
+
+	/**
+	 * Create the server socket and wait for a connection.
+	 * Keep receiving messages until the input stream is closed by the client.
+	 *
+	 * @param port the port number of the server
+	 */
+	public void start(int port, String password, String location) {
+		try {
+			System.out.println("Waiting for client...");
+
+			serverSocket = new ServerSocket(port);
+			clientSocket = serverSocket.accept();
+			out = new DataOutputStream(clientSocket.getOutputStream());
+			in = new DataInputStream(clientSocket.getInputStream());
+			byte[] data = new byte[256];
+			byte[] nonce = new byte[16];
+
+			Cipher symCipher = Cipher.getInstance("AES/GCM/NoPadding");
+			Base64.Encoder encoder = Base64.getEncoder();
+
+				int numBytes;
+				while ((numBytes = in.read(data)) != -1) {
+					if (masterKey == null){
+						getMasterKey(in, out, location, password, data);
+					}
+					else {
+						byte[] dataTrunc = Arrays.copyOfRange(data, 0, 36);
+
+						in.read(nonce);
+
+						GCMParameterSpec gcm = new GCMParameterSpec(128, nonce);
+
+						// Decrypt data
+						symCipher.init(Cipher.DECRYPT_MODE, masterKey, gcm);
+						symCipher.updateAAD(AADTag);
+						byte[] decryptedBytes = symCipher.doFinal(dataTrunc);
+						String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
+						System.out.println("Server received cleartext " + decryptedString);
+
+						// Encrypt data
+						symCipher.init(Cipher.ENCRYPT_MODE, masterKey, gcm);
+						symCipher.updateAAD(AADTag);
+						final byte[] originalBytes = decryptedString.getBytes(StandardCharsets.UTF_8);
+						byte[] cipherTextBytes = symCipher.doFinal(originalBytes);
+
+						// Encrypt response (this is just the decrypted data re-encrypted)
+						System.out.println("Server sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
+
+						out.write(cipherTextBytes);
+						out.write(nonce);
+						out.flush();
+					}
+				}
+			stop();
+		} catch (IOException e) {
+			System.out.println("Error: problem with file reading/writing - is the file location correct? ");
+		} catch (NoSuchAlgorithmException e) {
+			System.out.println("Error: the given algorithm is invalid. ");
+		} catch (InvalidKeyException e) {
+			e.printStackTrace();
+			System.out.println("Error: the given key is invalid. ");
+		} catch (NoSuchPaddingException | BadPaddingException e) {
+			System.out.println("Error: problem with the encryption algorithm padding. ");
+			e.printStackTrace();
+		} catch (IllegalBlockSizeException e) {
+			System.out.println("Error: block size is invalid. ");
 		} catch (InvalidAlgorithmParameterException e) {
 			e.printStackTrace();
 		}
