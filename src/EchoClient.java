@@ -21,6 +21,9 @@ public class EchoClient {
 	private DataInputStream in;
 
 	private byte[] AADTag = "auth".getBytes();
+	private static int sessionTimeout = 0;
+	private int sessionMessageCount = 0;
+	private static Key masterKey = null;
 
 	/**
 	 * Setup the two way streams.
@@ -112,7 +115,7 @@ public class EchoClient {
 	 * Send a message to server and receive a reply.
 	 *
 	 */
-	public String sendMasterKey(PublicKey serverPubKey, PrivateKey clientKey, Key masterKey) {
+	public String sendMasterKey(PublicKey serverPubKey, PrivateKey clientKey) {
 		try {
 
 			Cipher cipher = Cipher.getInstance(EncCipherName);
@@ -187,7 +190,7 @@ public class EchoClient {
 	 *
 	 * @param msg the message to send
 	 */
-	public String sendMessage(String msg, Key masterKey) {
+	public String sendMessage(String msg) {
 		try {
 			// Check that message is not too long
 			if (msg.length() > 32){
@@ -221,11 +224,10 @@ public class EchoClient {
 
 
 			System.out.println("Client sending ciphertext " + new String(encoder.encode(cipherTextBytes)));
-			System.out.println("LENGTH: " + cipherTextBytes.length);
 			out.write(cipherTextBytes);
 			out.write(iv);
 			out.flush();
-			byte[] inMessage = new byte[32];
+			byte[] inMessage = new byte[36];
 			byte[] nonce = new byte[16];
 			in.read(inMessage);
 			in.read(nonce);
@@ -277,21 +279,22 @@ public class EchoClient {
 	}
 
 	public static void main(String[] args) {
-		if (args.length != 2) {
+		if (args.length != 3) {
 			System.out.print("Incorrect arguments - please enter client key password and file store location.");
 			return;
 		}
 
 		EchoClient client = new EchoClient();
-		Key masterKey = client.generateMasterKey();
+		sessionTimeout = Integer.parseInt(args[2]);
+		masterKey = client.generateMasterKey();
 		client.startConnection("127.0.0.1", 4444);
 		PrivateKey clientKey = client.getClientKey(args[0], args[1]);
 		PublicKey serverPubKey = client.getServerKey(args[1]);
-		client.sendMasterKey(serverPubKey, clientKey, masterKey);
-		client.sendMessage("12345678", masterKey);
-		client.sendMessage("ABCDEFGH", masterKey);
-		client.sendMessage("87654321", masterKey);
-		client.sendMessage("HGFEDCBA", masterKey);
+		client.sendMasterKey(serverPubKey, clientKey);
+		client.sendMessage("12345678");
+		client.sendMessage("ABCDEFGH");
+		client.sendMessage("87654321");
+		client.sendMessage("HGFEDCBA");
 		client.stopConnection();
 	}
 }
