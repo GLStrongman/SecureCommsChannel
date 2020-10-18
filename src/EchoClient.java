@@ -1,3 +1,5 @@
+import com.sun.deploy.util.SessionState;
+
 import javax.crypto.*;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
@@ -192,6 +194,11 @@ public class EchoClient {
 	 */
 	public String sendMessage(String msg) {
 		try {
+			if (sessionMessageCount >= sessionTimeout) {
+				stopConnection();
+				throw new SecurityException();
+			}
+			sessionMessageCount++;
 			// Check that message is not too long
 			if (msg.length() > 32){
 				System.out.println("Error: message is too long!");
@@ -259,7 +266,10 @@ public class EchoClient {
 			System.out.println("Error: block size is invalid. ");
 			return null;
 		} catch (InvalidAlgorithmParameterException e) {
-			e.printStackTrace();
+			System.out.println("Error: invalid algorithm parameter. ");
+			return null;
+		} catch (SecurityException e) {
+			System.out.println("You've reached the session message limit of " + sessionTimeout + " messages, please reconnect to continue.");
 			return null;
 		}
 	}

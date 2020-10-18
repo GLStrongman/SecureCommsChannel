@@ -56,7 +56,6 @@ public class EchoServer {
 			// Decrypt data
 			byte[] decryptedBytes = cipher.doFinal(key);
 			String decryptedString = new String(decryptedBytes, StandardCharsets.UTF_8);
-			System.out.println("Server master key " + masterKey);
 
 			// Authenticate signature
 			System.out.println("Checking signature...");
